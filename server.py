@@ -39,8 +39,9 @@ def handle_user(user_socket, users, user_names, groups):
                     # Broadcast message to all users
                     broadcast(f"[{user_names[user_socket]}]: {message}", user_socket, users, user_names)
         except Exception as e:
-            print(f"Error: {e}")
-            break
+            # Log the error and continue listening for messages
+            user_socket.sendall("[Invalid input. Please try again.]".encode('utf-8'))
+            continue
 
     # Remove user from the list of users and close the socket
     users.remove(user_socket)
