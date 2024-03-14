@@ -16,14 +16,21 @@ def receive_messages(user_socket):
 
 # Main function for the user
 def main():
-    # Server configuration
-    host = 'localhost'
-    port = 8888
+    
+    while True:
+        try:
+            # Get server configuration from user
+            host = input("Enter the server IP address: ")
+            port = int(input("Enter the server port number: "))
 
-    # Create a socket for the user
-    user_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # Connect to the server
-    user_socket.connect((host, port))
+            # Create a socket for the user
+            user_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Connect to the server
+            user_socket.connect((host, port))
+            break  # If connection is successful, break the loop
+        except Exception as e:
+            print("Error connecting to server. Please check the server IP and port number and try again.")
+            print("Error details:", e)
 
     # Receive and print welcome message from the server
     welcome_message = user_socket.recv(1024).decode('utf-8')

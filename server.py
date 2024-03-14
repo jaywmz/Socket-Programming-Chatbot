@@ -351,8 +351,11 @@ def main():
             user_socket.sendall("Enter your username: ".encode('utf-8'))
             username = user_socket.recv(1024).decode('utf-8').strip()
 
+            # Convert username to lowercase
+            username_lower = username.lower()
+
             # Check if the username is already in use
-            if username in user_names.values():
+            if username_lower in map(str.lower, user_names.values()):
                 # Inform user about duplicate username
                 user_socket.sendall("[Existing Username. Please enter another name instead.]".encode('utf-8'))
             else:
@@ -370,9 +373,6 @@ def main():
         # Start a new thread to handle communication with the user
         thread = threading.Thread(target=handle_user, args=(user_socket, users, user_names, groups))
         thread.start()
-
-    # Close the server socket when the main loop ends
-    server_socket.close()
 
 if __name__ == "__main__":
     main()
