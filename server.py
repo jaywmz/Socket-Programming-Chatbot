@@ -322,6 +322,20 @@ def send_personal_message(recipient_username, personal_message, sender_socket, u
     else:
         recipient_socket.sendall(f"[Personal Message from {user_names[sender_socket]}]: {personal_message}".encode('utf-8'))
         
+# Function to handle server commands
+def handle_server_commands(server_socket, users, user_names):
+    while True:
+        command = input()
+        if command.startswith("@quit"):
+            # Inform all connected clients about server shutting down
+            for user_socket in users:
+                user_socket.sendall("[Server is shutting down]".encode('utf-8'))
+            # Close all client connections
+            for user_socket in users:
+                user_socket.close()
+            # Close the server socket
+            server_socket.close()
+            break
 
 # Main function to start the server
 def main():
@@ -340,6 +354,10 @@ def main():
     users = []
     user_names = {}
     groups = {}
+
+    # Start a thread to handle server commands
+    command_thread = threading.Thread(target=handle_server_commands, args=(server_socket, users, user_names))
+    command_thread.start()
 
     # Main loop to accept incoming connections
     while True:
@@ -376,6 +394,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
