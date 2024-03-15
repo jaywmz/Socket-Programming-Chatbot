@@ -108,6 +108,12 @@ def create_group(message, user_socket, user_names, groups):
 def send_group_message(message, user_socket, user_names, groups):
     # Parse group name and message
     parts = message.split()[2:]
+    
+    # Check if the necessary parameters are present
+    if len(parts) < 2:
+        user_socket.sendall("[Invalid input. Please provide a group name and a message.]".encode('utf-8'))
+        return
+    
     group_name = parts[0]
     group_message = ' '.join(parts[1:])
 
@@ -136,7 +142,14 @@ def send_group_message(message, user_socket, user_names, groups):
 # Function to handle a user leaving a group
 def leave_group(message, user_socket, user_names, groups):
     # Parse group name and username
-    _, _, group_name, username = message.split()
+    parts = message.split()
+
+    # Check if the necessary parameters are present
+    if len(parts) < 3:
+        user_socket.sendall("[Invalid input. Please provide a group name and a username.]".encode('utf-8'))
+        return
+
+    _, _, group_name, username = parts
 
     # Check if group exists
     if group_name not in groups:
@@ -168,7 +181,14 @@ def leave_group(message, user_socket, user_names, groups):
 # Function to delete a group
 def delete_group(message, user_socket, user_names, groups):
     # Parse group name
-    group_name = message.split()[2]
+    parts = message.split()[2:]
+    
+    # Check if the necessary parameters are present
+    if len(parts) < 1:
+        user_socket.sendall("[Invalid input. Please provide a group name.]".encode('utf-8'))
+        return
+
+    group_name = parts[0]
 
     # Check if group exists
     if group_name not in groups:
@@ -265,6 +285,12 @@ def add_group_member(message, user_socket, user_names, groups):
 def remove_group_member(message, user_socket, user_names, groups):
     # Parse group name and member(s) to remove
     parts = message.split()[2:]
+
+    # Check if the necessary parameters are present
+    if len(parts) < 2:
+        user_socket.sendall("[Invalid input. Please provide a group name and at least one member to remove.]".encode('utf-8'))
+        return
+    
     group_name = parts[0]
     members_to_remove = [member.strip() for member in ''.join(parts[1:]).split(',')]
 
@@ -312,7 +338,16 @@ def list_groups(message, user_socket, user_names, groups):
 
 # Function to list all members in a group
 def list_group_members(message, user_socket, user_names, groups):
-    group_name = message.split()[2]
+    # Parse group name
+    parts = message.split()
+
+    # Check if the necessary parameters are present
+    if len(parts) < 3:
+        user_socket.sendall("[Invalid input. Please provide a group name.]".encode('utf-8'))
+        return
+
+    group_name = parts[2]
+    
     if group_name in groups:
         group_members = groups[group_name]
         user_socket.sendall(f"[Members in {group_name} group: {', '.join(group_members)}]".encode('utf-8'))
