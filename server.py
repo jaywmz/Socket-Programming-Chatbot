@@ -1,10 +1,14 @@
 import socket
 import threading
 
+users = []
+
 # Function to handle communication with a user
-def handle_user(user_socket, users, user_names, groups):
+def handle_user(user_socket, user_names, groups):
+    global users
+    users.append(user_socket)
     commands = {
-        "@quit": quit,
+        "@quit": quit_command,
         "@names": names,
         "@group set": create_group,
         "@group send": send_group_message,
@@ -14,41 +18,87 @@ def handle_user(user_socket, users, user_names, groups):
         "@group list": list_groups,
         "@group members": list_group_members,
         "@group remove": remove_group_member,
-        "@": send_personal_message,
     }
 
     try:
         while True:
-            # Receive message from the user
-            message = user_socket.recv(1024).decode('utf-8')
-            if message:
-                for command, function in commands.items():
-                    if message.startswith(command):
-                        if command == "@":
-                            recipient_username, personal_message = parse_personal_message(message)
-                            function(recipient_username, personal_message, user_socket, user_names)
-                        else:
-                            function(message, user_socket, user_names, groups)
-                        break
+            message = user_socket.recv(1024).decode('utf-8').strip()
+            if not message:
+                continue
+
+            # Split the message for initial command detection
+            parts = message.split(' ', 2)
+            command = parts[0]
+
+            # Handling group commands as a special case
+            if command == "@group" and len(parts) > 1:
+                # Reconstruct the group command with its specific action
+                group_command = " ".join(parts[:2])
+                if group_command in commands:
+                    commands[group_command](message, user_socket, user_names, groups)
                 else:
-                    # Broadcast message to all users
-                    broadcast(f"[{user_names[user_socket]}]: {message}", user_socket, users, user_names)
+                    user_socket.sendall("Invalid group command. Please check your syntax.".encode('utf-8'))
+                continue
+
+            # Handling predefined commands excluding group commands
+            if command in commands and command != "@group":
+                commands[command](message, user_socket, user_names, groups)
+                continue
+
+            # Handling private messages
+            if command.startswith("@") and len(parts) == 2:
+                recipient_username, personal_message = parts[0][1:], parts[1]
+                if recipient_username in user_names.values():
+                    send_personal_message(recipient_username, personal_message, user_socket, user_names)
+                else:
+                    user_socket.sendall(f"User '{recipient_username}' does not exist.".encode('utf-8'))
+            else:
+                # Broadcast non-command messages to all users
+                broadcast(message, user_socket, user_names)
+
+    except OSError as e:
+        print(f"Socket error: {e}")
     except Exception as e:
-        # Log the error and continue listening for messages
-        print(f"Error: {e}")
-        user_socket.sendall("[Invalid input. Please try again.]".encode('utf-8'))
+        print(f"Unexpected error: {e}")
     finally:
-        # Inform other users about the user quitting
-        broadcast(f"[{user_names.get(user_socket, 'Unknown user')} exited]", user_socket, users, user_names)
-        # Remove user from the list of users and close the socket
-        users.remove(user_socket)
+        cleanup_user(user_socket, user_names, groups)
+
+
+
+
+def cleanup_user(user_socket, user_names, groups):
+    global users
+    # Attempt to get the username; default to 'Unknown user' if not found.
+    username = user_names.get(user_socket, 'Unknown user')
+    
+    # Safely attempt to close the user socket.
+    try:
         user_socket.close()
+    except OSError as e:
+        print(f"Error closing socket: {e}")
+    
+    # Ensure that operations on shared resources are thread-safe.
+    try:
+        if user_socket in users:
+            users.remove(user_socket)
         if user_socket in user_names:
             del user_names[user_socket]
 
-def quit(message, user_socket, user_names, groups):
-    # Broadcast message to all users
-    broadcast(f"[{user_names[user_socket]} exited]", user_socket, users, user_names)
+        # Broadcast user's exit after removing from lists to prevent sending to closed socket.
+        broadcast(f"[{username} exited]", None, user_names)  # Pass None as sender_socket since it's closed.
+        
+        # Remove the user from all groups they are a part of.
+        for group_name, group_members in groups.items():
+            if username in group_members:
+                group_members.remove(username)
+                # Optional: Broadcast to the group that the user has left, if desired.
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+
+
+
+def quit_command(message, user_socket, user_names, groups):
+    pass
 
 def names(message, user_socket, user_names, groups):
     # Create a list of all connected users
@@ -355,10 +405,13 @@ def list_group_members(message, user_socket, user_names, groups):
         user_socket.sendall("[Group does not exist]".encode('utf-8'))
         
 # Function to broadcast a message to all users except the sender
-def broadcast(message, sender_socket, users, user_names):
-    for user_socket in users:
-        if user_socket != sender_socket:
-            user_socket.sendall(message.encode('utf-8'))
+def broadcast(message, sender_socket, user_names, is_join_message=False):
+    for user in users:
+        if user is not sender_socket:
+            if is_join_message:
+                user.sendall(f"{message}".encode('utf-8'))
+            else:
+                user.sendall(f"[{user_names[sender_socket]}]: {message}".encode('utf-8'))
 
 # Function to parse personal messages
 def parse_personal_message(message):
@@ -380,18 +433,29 @@ def send_personal_message(recipient_username, personal_message, sender_socket, u
         recipient_socket.sendall(f"[Personal Message from {user_names[sender_socket]}]: {personal_message}".encode('utf-8'))
         
 # Function to handle server commands
-def handle_server_commands(server_socket, users, user_names):
+def handle_server_commands(server_socket, users, user_names, groups):
     while True:
-        command = input()
-        if command.startswith("@quit"):
+        command = input("Server command: ")
+        if command.strip().lower() == "@quit":
+            print("Shutting down the server...")
+
             # Inform all connected clients about server shutting down
-            for user_socket in users:
-                user_socket.sendall("[Server is shutting down]".encode('utf-8'))
-            # Close all client connections
-            for user_socket in users:
-                user_socket.close()
-            # Close the server socket
-            server_socket.close()
+            for user_socket in list(users):  # Use a copy of the list to avoid modification during iteration
+                try:
+                    # Safely attempt to notify the client and close the socket.
+                    user_socket.sendall("[Server is shutting down]".encode('utf-8'))
+                    cleanup_user(user_socket, user_names, groups)
+                except OSError as e:
+                    print(f"Error sending shutdown message to a client: {e}")
+            print("All clients have been notified and disconnected.")
+
+            # Close the server socket to stop accepting new connections.
+            try:
+                server_socket.close()
+            except OSError as e:
+                print(f"Error closing server socket: {e}")
+
+            print("Server has been successfully shut down.")
             break
 
 # Main function to start the server
@@ -413,13 +477,17 @@ def main():
     groups = {}
 
     # Start a thread to handle server commands
-    command_thread = threading.Thread(target=handle_server_commands, args=(server_socket, users, user_names))
+    command_thread = threading.Thread(target=handle_server_commands, args=(server_socket, users, user_names, groups))
     command_thread.start()
 
     # Main loop to accept incoming connections
     while True:
-        user_socket, addr = server_socket.accept()
-        print(f"***Accepted connection from {addr[0]}:{addr[1]}***")
+        try:
+            user_socket, addr = server_socket.accept()
+            print(f"***Accepted connection from {addr[0]}:{addr[1]}***")
+        except OSError as e:
+            print(f"Error: {e}")
+            break
 
         # Prompt user for username
         while True:
@@ -442,11 +510,11 @@ def main():
                 user_socket.sendall(f"[Welcome {username}!]".encode('utf-8'))
 
                 # Broadcast to other users that a new user has joined
-                broadcast(f"[{username} joined]", user_socket, users, user_names)
+                broadcast(f"[{username} joined]", user_socket, user_names, is_join_message=True)
                 break
 
         # Start a new thread to handle communication with the user
-        thread = threading.Thread(target=handle_user, args=(user_socket, users, user_names, groups))
+        thread = threading.Thread(target=handle_user, args=(user_socket, user_names, groups))
         thread.start()
 
 if __name__ == "__main__":

@@ -45,16 +45,20 @@ def main():
         # Get user input
         message = input()
 
-        # Send "@quit" command to disconnect from the server
-        if message == "@quit":
-            user_socket.sendall(message.encode('utf-8'))
+        try:
+            # Send "@quit" command to disconnect from the server
+            if message == "@quit":
+                user_socket.sendall(message.encode('utf-8'))
+                break
+            # Send "@names" command to get list of connected users
+            elif message == "@names":
+                user_socket.sendall(message.encode('utf-8'))
+            else:
+                # Send user's message to the server
+                user_socket.sendall(message.encode('utf-8'))
+        except ConnectionResetError:
+            print("Connection was closed by the server.")
             break
-        # Send "@names" command to get list of connected users
-        elif message == "@names":
-            user_socket.sendall(message.encode('utf-8'))
-        else:
-            # Send user's message to the server
-            user_socket.sendall(message.encode('utf-8'))
 
     # Close the user socket
     user_socket.close()
