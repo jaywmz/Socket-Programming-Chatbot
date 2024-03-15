@@ -3,55 +3,67 @@ import threading
 
 # Function to handle communication with a user
 def handle_user(user_socket, users, user_names, groups):
-    while True:
-        try:
+    commands = {
+        "@quit": quit,
+        "@names": names,
+        "@group set": create_group,
+        "@group send": send_group_message,
+        "@group delete": delete_group,
+        "@group leave": leave_group,
+        "@group add": add_group_member,
+        "@group list": list_groups,
+        "@group members": list_group_members,
+        "@group remove": remove_group_member,
+        "@": send_personal_message,
+    }
+
+    try:
+        while True:
             # Receive message from the user
             message = user_socket.recv(1024).decode('utf-8')
             if message:
-                if message.startswith("@quit"):
-                    # Inform other users about the user quitting
-                    broadcast(f"[{user_names[user_socket]} exited]", user_socket, users, user_names)
-                    break
-                elif message.startswith("@names"):
-                    # Send list of connected users to the user
-                    user_socket.sendall(f"[Connected users: {', '.join(user_names.values())}]".encode('utf-8'))
-                elif message.startswith("@group set"):
-                    create_group(message, user_socket, user_names, groups)
-                elif message.startswith("@group send"):
-                    send_group_message(message, user_socket, user_names, groups)
-                elif message.startswith("@group delete"):
-                    delete_group(message, user_socket, user_names, groups)
-                elif message.startswith("@group leave"):
-                    leave_group(message, user_socket, user_names, groups)
-                elif message.startswith("@group add"):
-                    add_group_member(message, user_socket, user_names, groups)
-                elif message.startswith("@group list"):
-                    list_groups(message, user_socket, user_names, groups)
-                elif message.startswith("@group members"):
-                    list_group_members(message, user_socket, user_names, groups)
-                elif message.startswith("@group remove"):
-                    remove_group_member(message, user_socket, user_names, groups)
-                elif message.startswith("@"):
-                    # Handle personal messages
-                    recipient_username, personal_message = parse_personal_message(message)
-                    send_personal_message(recipient_username, personal_message, user_socket, user_names)
+                for command, function in commands.items():
+                    if message.startswith(command):
+                        if command == "@":
+                            recipient_username, personal_message = parse_personal_message(message)
+                            function(recipient_username, personal_message, user_socket, user_names)
+                        else:
+                            function(message, user_socket, user_names, groups)
+                        break
                 else:
                     # Broadcast message to all users
                     broadcast(f"[{user_names[user_socket]}]: {message}", user_socket, users, user_names)
-        except Exception as e:
-            # Log the error and continue listening for messages
-            user_socket.sendall("[Invalid input. Please try again.]".encode('utf-8'))
-            continue
+    except Exception as e:
+        # Log the error and continue listening for messages
+        print(f"Error: {e}")
+        user_socket.sendall("[Invalid input. Please try again.]".encode('utf-8'))
+    finally:
+        # Inform other users about the user quitting
+        broadcast(f"[{user_names.get(user_socket, 'Unknown user')} exited]", user_socket, users, user_names)
+        # Remove user from the list of users and close the socket
+        users.remove(user_socket)
+        user_socket.close()
+        if user_socket in user_names:
+            del user_names[user_socket]
 
-    # Remove user from the list of users and close the socket
-    users.remove(user_socket)
-    user_socket.close()
-    del user_names[user_socket]
+def quit(message, user_socket, user_names, groups):
+    # Broadcast message to all users
+    broadcast(f"[{user_names[user_socket]} exited]", user_socket, users, user_names)
+
+def names(message, user_socket, user_names, groups):
+    # Create a list of all connected users
+    connected_users = [username for username in user_names.values()]
+    # Send the list to the user
+    user_socket.sendall(f"Connected users: {', '.join(connected_users)}".encode('utf-8'))
 
 # Function to create a group
 def create_group(message, user_socket, user_names, groups):
     # Parse group name and members
     parts = message.split()[2:]
+    if len(parts) < 2:
+        user_socket.sendall("[Invalid input. Please provide a group name and at least one member.]".encode('utf-8'))
+        return
+    
     group_name = parts[0]
     group_members = [member.strip() for member in ''.join(parts[1:]).split(',')]
 
@@ -200,6 +212,12 @@ def delete_group(message, user_socket, user_names, groups):
 def add_group_member(message, user_socket, user_names, groups):
     # Parse group name and member(s) to add
     parts = message.split()[2:]
+    
+    # Check if the necessary parameters are present
+    if len(parts) < 2:
+        user_socket.sendall("[Invalid input. Please provide a group name and at least one member to add.]".encode('utf-8'))
+        return
+    
     group_name = parts[0]
     members_to_add = [member.strip() for member in ''.join(parts[1:]).split(',')]
 
