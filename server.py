@@ -123,28 +123,31 @@ def send_group_message(message, user_socket, user_names, groups):
 
 # Function to handle a user leaving a group
 def leave_group(message, user_socket, user_names, groups):
-    # Parse group name
-    group_name = message.split()[2]
+    # Parse group name and username
+    _, _, group_name, username = message.split()
 
     # Check if group exists
     if group_name not in groups:
         user_socket.sendall("[Group does not exist]".encode('utf-8'))
         return
 
+    # Check if the provided username matches the username associated with the user's socket
+    if user_names[user_socket] != username:
+        user_socket.sendall("[Username does not match]".encode('utf-8'))
+        return
+
     # Check if user is a member of the group
-    if user_names[user_socket] not in groups[group_name]:
+    if username not in groups[group_name]:
         user_socket.sendall("[You are not a member of this group]".encode('utf-8'))
         return
 
     # Inform all group members except the leaving member
-    leaving_member = user_names[user_socket]
     for member_socket, member_username in user_names.items():
-        if member_username != leaving_member and member_username in groups[group_name]:
-            member_socket.sendall(f"[{leaving_member} has left the {group_name} group]".encode('utf-8'))
+        if member_username != username and member_username in groups[group_name]:
+            member_socket.sendall(f"[{username} has left the {group_name} group]".encode('utf-8'))
 
-    # Remove user from the group if the user is in the group
-    if leaving_member in groups[group_name]:
-        groups[group_name].remove(leaving_member)
+    # Remove user from the group
+    groups[group_name].remove(username)
 
     # Inform user about leaving the group
     user_socket.sendall(f"[You have left the {group_name} group]".encode('utf-8'))
