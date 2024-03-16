@@ -98,7 +98,24 @@ def cleanup_user(user_socket, user_names, groups):
 
 
 def quit_command(message, user_socket, user_names, groups):
-    pass
+    # Retrieve the username of the user who is quitting
+    username = user_names.get(user_socket, 'Unknown user')
+
+    # Broadcast the user's exit message to all other users, using is_join_message=True to avoid prefix
+    broadcast(f"[{username} exited]", sender_socket=user_socket, user_names=user_names, is_join_message=True)
+
+    # Perform cleanup for the user who is quitting
+    cleanup_user(user_socket, user_names, groups)
+
+    # Close the user's socket
+    try:
+        user_socket.close()
+    except OSError as e:
+        print(f"Error closing socket for {username}: {e}")
+
+    print(f"{username} has quit the chat.")
+
+
 
 def names(message, user_socket, user_names, groups):
     # Create a list of all connected users
@@ -191,41 +208,52 @@ def send_group_message(message, user_socket, user_names, groups):
 
 # Function to handle a user leaving a group
 def leave_group(message, user_socket, user_names, groups):
-    # Parse group name and username
-    parts = message.split()
+    parts = message.split(maxsplit=3)
+    # Expected parts: ['@group', 'leave', 'group_name', 'optional_username']
 
-    # Check if the necessary parameters are present
+    # Validate the command structure
     if len(parts) < 3:
-        user_socket.sendall("[Invalid input. Please provide a group name and a username.]".encode('utf-8'))
+        user_socket.sendall("[Invalid input. Please provide a group name.]".encode('utf-8'))
         return
 
-    _, _, group_name, username = parts
+    group_name = parts[2]
+    specified_username = parts[3] if len(parts) == 4 else user_names[user_socket]
+
+    # Authority check (optional)
+    # This example does not implement authority check; assuming all users can remove themselves or specified users
 
     # Check if group exists
     if group_name not in groups:
         user_socket.sendall("[Group does not exist]".encode('utf-8'))
         return
 
-    # Check if the provided username matches the username associated with the user's socket
-    if user_names[user_socket] != username:
-        user_socket.sendall("[Username does not match]".encode('utf-8'))
+    # Check if the specified user is a member of the group
+    if specified_username not in groups[group_name]:
+        user_socket.sendall(f"[{specified_username} is not a member of {group_name} group.]".encode('utf-8'))
         return
 
-    # Check if user is a member of the group
-    if username not in groups[group_name]:
-        user_socket.sendall("[You are not a member of this group]".encode('utf-8'))
-        return
+    # Remove the specified user from the group
+    groups[group_name].remove(specified_username)
 
-    # Inform all group members except the leaving member
+    # Inform the group about the user leaving
+    message_to_group = f"[{specified_username} has left the {group_name} group]"
     for member_socket, member_username in user_names.items():
-        if member_username != username and member_username in groups[group_name]:
-            member_socket.sendall(f"[{username} has left the {group_name} group]".encode('utf-8'))
+        if member_username in groups[group_name] or member_username == specified_username:
+            member_socket.sendall(message_to_group.encode('utf-8'))
 
-    # Remove user from the group
-    groups[group_name].remove(username)
+    # Inform the user who issued the command about the successful operation
+    if specified_username == user_names[user_socket]:
+        user_socket.sendall(f"[You have left the {group_name} group]".encode('utf-8'))
+    else:
+        user_socket.sendall(f"[{specified_username} has been removed from the {group_name} group]".encode('utf-8'))
 
-    # Inform user about leaving the group
-    user_socket.sendall(f"[You have left the {group_name} group]".encode('utf-8'))
+    # Optional: Delete the group if it's empty
+    if not groups[group_name]:
+        del groups[group_name]
+        # Inform the server or log the deletion
+        print(f"The {group_name} group has been deleted because it became empty.")
+
+
 
 
 # Function to delete a group
