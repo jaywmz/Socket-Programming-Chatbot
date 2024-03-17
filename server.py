@@ -303,7 +303,8 @@ def leave_group(message, user_socket, user_names, groups):
     # Inform user about leaving the group
     user_socket.sendall(f"[You have left the {group_name} group]".encode('utf-8'))
 
-
+    # Remove the leaving member's socket from user_names
+    del user_names[user_socket]
 
 
 # Function to delete a group
