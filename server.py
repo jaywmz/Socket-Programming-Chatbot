@@ -360,7 +360,8 @@ def delete_group(message, user_socket, user_names, groups):
         if member_username != sender_name and member_username not in members_to_add and (member_username in groups[group_name]['members'] or member_username in groups[group_name]['admins']):
             member_socket.sendall(f"[{', '.join(members_to_add)} were added to the {group_name} group by {sender_name}]".encode('utf-8'))
 
-
+    # Delete the group
+    del groups[group_name]
 
 
 # Function to add a member to a group
