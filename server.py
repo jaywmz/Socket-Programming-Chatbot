@@ -295,19 +295,17 @@ def leave_group(message, user_socket, user_names, groups):
                     if member_username not in groups[group_name]['admins'] and member_username != auto_assigned_admin:
                         member_socket.sendall(f"[{auto_assigned_admin} has been auto-assigned as an admin of the {group_name} group]".encode('utf-8'))
     
-    # Inform all group members except the leaving member 
+    # Inform all group members except the leaving member and the previously left admin
     for member_socket, member_username in user_names.items():
         if member_username != leaving_member:
             member_socket.sendall(f"[{leaving_member} has left the {group_name} group]".encode('utf-8'))
 
     # Inform user about leaving the group
     user_socket.sendall(f"[You have left the {group_name} group]".encode('utf-8'))
-
+    
     # Remove the leaving member's socket from user_names
     del user_names[user_socket]
-
-
-# Function to delete a group
+    
 def delete_group(message, user_socket, user_names, groups):
     # Parse group name
     parts = message.split()[2:]
@@ -320,48 +318,43 @@ def delete_group(message, user_socket, user_names, groups):
     group_name = parts[0]
     members_to_add = [member.strip() for member in ''.join(parts[1:]).split(',')]
 
-    # Check if group exists
+     # Check if group exists
     if group_name not in groups:
         user_socket.sendall("[Group does not exist]".encode('utf-8'))
         return
 
     # Check if user is the creator or an admin of the group
-    sender_name = user_names[user_socket]
-    if sender_name not in groups[group_name]['admins']:
+    user_username = user_names[user_socket]
+    if user_username not in groups[group_name]['admins']:
         user_socket.sendall("[You are not authorized to delete this group]".encode('utf-8'))
         return
 
-    # Check if any member to add is already in the group
-    existing_members = groups[group_name]['members'] + groups[group_name]['admins']
-    already_members = [member for member in members_to_add if member in existing_members]
-    if already_members:
-        user_socket.sendall(f"[{', '.join(already_members)} already member(s) of this group]".encode('utf-8'))
+    # Prompt the creator/admin if they want to delete the group
+    user_socket.sendall(f"Do you want to delete the group '{group_name}'? This action will remove all members. (yes/no): ".encode('utf-8'))
+    response = user_socket.recv(1024).decode('utf-8').strip()
+
+    if response.lower() == 'no':
+        user_socket.sendall("[Group deletion cancelled]".encode('utf-8'))
+        return
+    elif response.lower() != 'yes':
+        user_socket.sendall("[Invalid response. Group deletion cancelled]".encode('utf-8'))
         return
 
-    # Check if all members to add exist
-    non_existing_members = [member for member in members_to_add if member not in user_names.values()]
-    if non_existing_members:
-        user_socket.sendall(f"[User(s) {' '.join(non_existing_members)} to add do(es) not exist]".encode('utf-8'))
-        return
+    # Inform admin about group deletion
+    admin_message = f"You have deleted the group '{group_name}'."
+    deletion_message = f"The group '{group_name}' has been deleted by {user_username}."
 
-    # Add members to the group
-    groups[group_name]['members'].extend(members_to_add)
-
-    # Inform the added members
-    for member_socket, member_username in user_names.items():
-        if member_username in members_to_add:
-            member_socket.sendall(f"[You are enrolled into the {group_name} group by {sender_name}]".encode('utf-8'))
-
-    # Inform user that added members about the addition
-    user_socket.sendall(f"[You added {' '.join(members_to_add)} to the {group_name} group]".encode('utf-8'))
-
-    # Inform other members and admins about the addition
-    for member_socket, member_username in user_names.items():
-        if member_username != sender_name and member_username not in members_to_add and (member_username in groups[group_name]['members'] or member_username in groups[group_name]['admins']):
-            member_socket.sendall(f"[{', '.join(members_to_add)} were added to the {group_name} group by {sender_name}]".encode('utf-8'))
+    for member in groups[group_name]['members'] + groups[group_name]['admins']:
+        for member_socket, username in user_names.items():
+            if username == member:
+                if member_socket == user_socket:
+                    member_socket.sendall(admin_message.encode('utf-8'))
+                elif username != user_username:
+                    member_socket.sendall(deletion_message.encode('utf-8'))
 
     # Delete the group
     del groups[group_name]
+
 
 
 # Function to add a member to a group
