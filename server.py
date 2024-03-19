@@ -313,14 +313,11 @@ def leave_group(message, user_socket, user_names, groups):
     
     # Inform all group members except the leaving member and the previously left admin
     for member_socket, member_username in user_names.items():
-        if member_username != leaving_member:
+        if member_username in groups[group_name]['members'] or member_username in groups[group_name]['admins']:
             member_socket.sendall(f"[{leaving_member} has left the {group_name} group]".encode('utf-8'))
 
     # Inform user about leaving the group
     user_socket.sendall(f"[You have left the {group_name} group]".encode('utf-8'))
-    
-    # Remove the leaving member's socket from user_names
-    # del user_names[user_socket]
 
     
 def delete_group(message, user_socket, user_names, groups):
