@@ -448,6 +448,8 @@ def remove_group_member(message, user_socket, user_names, groups):
     # Combined members and admins for the removal check
     existing_members = groups[group_name]['members'] + groups[group_name]['admins']
     
+    removed_members = []
+
     for member in members_to_remove:
         # Check if member is in the group (either as member or admin)
         if member not in existing_members:
@@ -464,18 +466,21 @@ def remove_group_member(message, user_socket, user_names, groups):
             # Optionally, demote to a regular member instead of removing from the group entirely
             # groups[group_name]['members'].append(member)
 
+        removed_members.append(member)
+
         # Inform the removed member
         for member_socket, member_username in user_names.items():
             if member_username == member:
                 member_socket.sendall(f"[You have been removed from the {group_name} group by {user_names[user_socket]}]".encode('utf-8'))
 
     # Inform the user who removed the members
-    user_socket.sendall(f"[You removed {' '.join(members_to_remove)} from the {group_name} group]".encode('utf-8'))
+    if removed_members:
+        user_socket.sendall(f"[You removed {' '.join(removed_members)} from the {group_name} group]".encode('utf-8'))
 
     # Inform the remaining group members and admins about the removal
     for member_socket, member_username in user_names.items():
-        if member_username in existing_members and member_username != user_names[user_socket]:
-            member_socket.sendall(f"[{' '.join(members_to_remove)} were removed from the {group_name} group by {user_names[user_socket]}]".encode('utf-8'))
+        if removed_members and member_username in existing_members and member_username != user_names[user_socket]:
+            member_socket.sendall(f"[{' '.join(removed_members)} were removed from the {group_name} group by {user_names[user_socket]}]".encode('utf-8'))
 
 
 
